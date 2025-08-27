@@ -1,11 +1,14 @@
 {
   "id": "nokia_enhanced_syslog_pack",
   "version": "3.0.0",
-  "author": "Cribl Engineering",
+  "author": "Your Name",
   "minVersion": "4.0.0",
   "description": "Enhanced Nokia syslog processing pack supporting both 7750 SR and MAG-c devices with intelligent format detection and comprehensive field extraction",
   "displayName": "Nokia Enhanced Log Processing (7750 SR + MAG-c)",
   "tags": ["nokia", "7750", "sr", "mag-c", "mobile-gateway", "syslog", "normalization", "structured-data"],
   "modules": {},
-  "dependencies": {}
+  "dependencies": {},
+  "git": {
+    "uri": "https://github.com/mancow2001/nokia-mag-7750-cribl-pack.git"
+  }
 }
