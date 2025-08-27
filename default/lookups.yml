@@ -1,0 +1,19 @@
+nokia_7750_events:
+  filename: nokia_7750_events.csv
+  reload_on_hup: true
+  description: "Nokia 7750 SR event mapping and descriptions"
+
+nokia_applications:
+  filename: nokia_applications.csv
+  reload_on_hup: true
+  description: "Nokia application and process descriptions"
+
+nokia_magc_events:
+  filename: nokia_magc_events.csv
+  reload_on_hup: true
+  description: "Nokia MAG-c event ID mappings"
+
+nokia_severity_mapping:
+  filename: nokia_severity_mapping.csv
+  reload_on_hup: true
+  description: "Nokia severity level mappings and descriptions"

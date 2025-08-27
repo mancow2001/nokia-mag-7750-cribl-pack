@@ -1,0 +1,590 @@
+nokia_enhanced_parser:
+  type: code
+  conf:
+    includeRawVariables: false
+    strictParsing: false
+  description: "Parse Nokia log format with intelligent device detection"
+  disabled: false
+  lib: |
+    // Enhanced Nokia Parser - Supports MAG-c AND 7750 SR formats
+    exports.name = 'nokia_enhanced_parser';
+    exports.version = '3.0.0';
+    exports.disabled = false;
+    exports.group = 'Nokia Enhanced';
+
+    const { Expression } = C;
+
+    let parser;
+
+    exports.init = (opts) => {
+      const conf = opts.conf || {};
+      
+      const patterns = [
+        // Nokia 7750 SR format
+        {
+          type: '7750_sr',
+          regex: /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+\d{2}:\d{2})\s+(\S+)\s+(\w+)\[(\d+)\]:\s+\[(\d+)\]\[(\d+)\]\[([A-Z])\]\[(\d+)\]\s+\[(\d+)\]\s+([^:]+):\s+(.*)$/,
+          fields: ['timestamp', 'hostname', 'process', 'pid', 'card1', 'card2', 'card_state', 'card_id', 'num', 'source_file', 'structured_data']
+        },
+        // Nokia MAG-c format
+        {
+          type: 'mag_c',
+          regex: /^(\d+)\s+(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{2})\s+(\w+)\s+(\w+):\s+(\w+)\s+#(\d+)\s+(\S+)\s+(.+)$/,
+          fields: ['sequence', 'timestamp', 'timezone', 'severity', 'application', 'event_id', 'router', 'subject_message']
+        },
+        // Syslog format forwarded from Nokia
+        {
+          type: 'syslog',
+          regex: /^<(\d+)>(\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{2})\s+(\S+)\s+(\w+):\s+(\w+)\s+#(\d+)\s+(\S+)\s+(.+)$/,
+          fields: ['priority', 'timestamp', 'hostname', 'severity', 'application', 'event_id', 'router', 'subject_message']
+        }
+      ];
+      
+      parser = {
+        patterns,
+        includeRawVariables: conf.includeRawVariables || false,
+        strictParsing: conf.strictParsing || false,
+        
+        parseNokia7750StructuredData: (structuredData) => {
+          const data = {};
+          
+          // Parse structured fields like "Id:2406, Syslog-Severity:6, Perceived-Severity:CLEAR"
+          const fieldMatches = structuredData.match(/(\w+(?:-\w+)*):([^,]+)(?:,|$)/g);
+          if (fieldMatches) {
+            fieldMatches.forEach(match => {
+              const [, key, value] = match.match(/(\w+(?:-\w+)*):([^,]+)/) || [];
+              if (key && value) {
+                // Convert key to snake_case and clean value
+                const cleanKey = key.toLowerCase().replace(/-/g, '_');
+                let cleanValue = value.trim();
+                
+                // Handle special Nokia values
+                if (cleanValue === 'NULL' || cleanValue === '') {
+                  return; // Skip NULL values
+                }
+                
+                // Parse numeric values
+                if (/^\d+$/.test(cleanValue)) {
+                  data[cleanKey] = parseInt(cleanValue);
+                } else {
+                  data[cleanKey] = cleanValue;
+                }
+              }
+            });
+          }
+          
+          return data;
+        },
+        
+        parseNokiaVariables: (message) => {
+          const variables = {};
+          
+          // Extract Nokia MAG-c variables (tmnxMobGw*, tmnxMc*, etc.)
+          const variableMatches = message.match(/\$([a-zA-Z0-9_]+)\$/g);
+          if (variableMatches && parser.includeRawVariables) {
+            variableMatches.forEach(match => {
+              const varName = match.slice(1, -1);
+              variables[`raw_var_${varName}`] = true;
+            });
+          }
+          
+          // Parse common Nokia parameters
+          const patterns = [
+            { regex: /Gw-(\S+)/, field: 'gateway_id' },
+            { regex: /Group-(\d+)/, field: 'system_group_id' },
+            { regex: /Card-(\d+)/, field: 'card_slot' },
+            { regex: /from:\s*([^,]+)/, field: 'config_source' },
+            { regex: /to:\s*([^,]+)/, field: 'config_destination' },
+            { regex: /Interface\s+([^\s,]+)/, field: 'interface_name' },
+            { regex: /speed\s+(\w+)/, field: 'interface_speed' }
+          ];
+          
+          patterns.forEach(pattern => {
+            const match = message.match(pattern.regex);
+            if (match) {
+              variables[pattern.field] = match[1].trim();
+            }
+          });
+          
+          return variables;
+        }
+      };
+    };
+
+    exports.process = (event) => {
+      const raw = event._raw;
+      if (!raw) return event;
+      
+      let matched = false;
+      let deviceType = 'unknown';
+      
+      for (const pattern of parser.patterns) {
+        const match = raw.match(pattern.regex);
+        if (match) {
+          deviceType = pattern.type;
+          
+          // Parse basic fields
+          for (let i = 0; i < pattern.fields.length; i++) {
+            if (match[i + 1] !== undefined) {
+              event[`nokia_${pattern.fields[i]}`] = match[i + 1];
+            }
+          }
+          
+          // Handle different device types
+          if (deviceType === '7750_sr') {
+            // Nokia 7750 SR specific processing
+            event.device_type = 'nokia_7750_sr';
+            event.product = 'Nokia 7750 SR';
+            
+            // Parse timestamp
+            if (event.nokia_timestamp) {
+              try {
+                const timeObj = new Date(event.nokia_timestamp);
+                if (!isNaN(timeObj.getTime())) {
+                  event._time = timeObj.getTime() / 1000;
+                }
+              } catch (e) {
+                // Keep original if parsing fails
+              }
+            }
+            
+            // Parse structured data
+            if (event.nokia_structured_data) {
+              const structuredFields = parser.parseNokia7750StructuredData(event.nokia_structured_data);
+              Object.keys(structuredFields).forEach(key => {
+                event[`nokia_${key}`] = structuredFields[key];
+              });
+              
+              // Extract meaningful message components
+              if (structuredFields.details) {
+                const detailsVars = parser.parseNokiaVariables(structuredFields.details);
+                Object.keys(detailsVars).forEach(key => {
+                  if (typeof detailsVars[key] === 'string') {
+                    event[`nokia_${key}`] = detailsVars[key];
+                  }
+                });
+              }
+            }
+            
+            // Build card information
+            if (event.nokia_card1 && event.nokia_card2) {
+              event.nokia_card_slot = `${event.nokia_card1}/${event.nokia_card2}`;
+            }
+            
+          } else if (deviceType === 'mag_c') {
+            // Nokia MAG-c specific processing
+            event.device_type = 'nokia_mag_c';
+            event.product = 'Nokia Multi-Access Gateway Controller';
+            
+            // Parse Nokia timestamp
+            if (event.nokia_timestamp) {
+              try {
+                const nokiaTime = event.nokia_timestamp.replace(/\//g, '-');
+                const timeObj = new Date(nokiaTime + (event.nokia_timezone === 'UTC' ? 'Z' : ''));
+                if (!isNaN(timeObj.getTime())) {
+                  event._time = timeObj.getTime() / 1000;
+                }
+              } catch (e) {
+                // Keep original timestamp if parsing fails
+              }
+            }
+            
+            // Extract Nokia variables
+            if (event.nokia_subject_message) {
+              const nokiaVars = parser.parseNokiaVariables(event.nokia_subject_message);
+              Object.keys(nokiaVars).forEach(key => {
+                if (typeof nokiaVars[key] === 'string') {
+                  event[`nokia_${key}`] = nokiaVars[key];
+                }
+              });
+            }
+          }
+          
+          matched = true;
+          break;
+        }
+      }
+      
+      // Common Nokia processing
+      if (matched) {
+        event.vendor = 'nokia';
+        event.nokia_device_type = deviceType;
+        event.nokia_processed = true;
+        
+        // Handle syslog priority if present
+        if (event.nokia_priority) {
+          const pri = parseInt(event.nokia_priority);
+          event.nokia_facility = Math.floor(pri / 8);
+          event.nokia_severity_code = pri % 8;
+        }
+      } else if (parser.strictParsing) {
+        // In strict mode, mark as failed if no pattern matches
+        event.nokia_parse_failed = true;
+      }
+      
+      return event;
+    };
+
+nokia_enhanced_normalize:
+  type: code
+  conf: {}
+  description: "Normalize Nokia fields to standard schema for both device types"
+  disabled: false
+  lib: |
+    exports.name = 'nokia_enhanced_normalize';
+    exports.version = '3.0.0';
+    exports.disabled = false;
+    exports.group = 'Nokia Enhanced';
+
+    exports.process = (event) => {
+      if (!event.nokia_processed) return event;
+      
+      const deviceType = event.nokia_device_type;
+      
+      // Common normalization
+      event.vendor = 'nokia';
+      event.log_source_type = 'network_device';
+      
+      if (deviceType === '7750_sr') {
+        // Nokia 7750 SR normalization
+        if (event.nokia_hostname) {
+          event.host = event.nokia_hostname;
+          event.source = event.nokia_hostname;
+        }
+        
+        if (event.nokia_process) {
+          event.process_name = event.nokia_process;
+        }
+        
+        if (event.nokia_pid) {
+          event.process_id = parseInt(event.nokia_pid);
+        }
+        
+        // Map Nokia 7750 severity
+        if (event.nokia_perceived_severity) {
+          const severityMap = {
+            'CRITICAL': 'critical',
+            'MAJOR': 'major',
+            'MINOR': 'minor',
+            'WARNING': 'warning',
+            'CLEAR': 'clear',
+            'CLEARED': 'clear',
+            'INFO': 'info'
+          };
+          event.severity = severityMap[event.nokia_perceived_severity] || event.nokia_perceived_severity.toLowerCase();
+          event.log_level = event.severity;
+        }
+        
+        // Build comprehensive message from cause and details
+        let messageParts = [];
+        if (event.nokia_cause) {
+          messageParts.push(event.nokia_cause);
+        }
+        if (event.nokia_details && event.nokia_details !== event.nokia_cause) {
+          messageParts.push(`Details:${event.nokia_details}`);
+        }
+        event.message = messageParts.join(', ') || event.nokia_cause || 'Nokia 7750 SR event';
+        
+        // Event information
+        if (event.nokia_id) {
+          event.event_id = event.nokia_id;
+        }
+        if (event.nokia_name) {
+          event.event_name = event.nokia_name;
+        }
+        
+        // User and session info
+        if (event.nokia_login) {
+          event.user = event.nokia_login;
+        }
+        if (event.nokia_session) {
+          event.session_id = event.nokia_session.toString();
+        }
+        if (event.nokia_ipaddress) {
+          event.src_ip = event.nokia_ipaddress;
+        }
+        if (event.nokia_srcmanager) {
+          event.management_interface = event.nokia_srcmanager;
+        }
+        
+      } else if (deviceType === 'mag_c') {
+        // Nokia MAG-c normalization
+        if (event.nokia_hostname || event.nokia_router) {
+          event.host = event.nokia_hostname || event.nokia_router;
+          event.source = event.host;
+        }
+        
+        if (event.nokia_severity) {
+          event.severity = event.nokia_severity.toLowerCase();
+          event.log_level = event.severity;
+        }
+        
+        if (event.nokia_application) {
+          event.application = event.nokia_application;
+          event.process_name = event.nokia_application;
+        }
+        
+        if (event.nokia_event_id) {
+          event.event_id = parseInt(event.nokia_event_id);
+        }
+        
+        // Build message
+        const messageFields = ['nokia_cleaned_message', 'nokia_message', 'nokia_subject_message'];
+        for (const field of messageFields) {
+          if (event[field]) {
+            event.message = event[field];
+            break;
+          }
+        }
+      }
+      
+      // Common facility mapping
+      if (event.nokia_facility !== undefined) {
+        const facilityMap = {
+          0: 'kernel', 1: 'user', 2: 'mail', 3: 'daemon', 4: 'security',
+          5: 'syslogd', 6: 'lpr', 7: 'news', 8: 'uucp', 9: 'cron',
+          10: 'authpriv', 11: 'ftp', 16: 'local0', 17: 'local1',
+          18: 'local2', 19: 'local3', 20: 'local4', 21: 'local5',
+          22: 'local6', 23: 'local7'
+        };
+        event.facility = facilityMap[event.nokia_facility] || 'syslogd';
+      } else {
+        // Default facility for Nokia logs
+        event.facility = 'syslogd';
+      }
+      
+      return event;
+    };
+
+nokia_enhanced_enrich:
+  type: code
+  conf: {}
+  description: "Enrich Nokia events with operational context for both device types"
+  disabled: false
+  lib: |
+    // Enhanced Nokia Enrichment - Handles Both Device Types
+    exports.name = 'nokia_enhanced_enrich';
+    exports.version = '3.0.0';
+    exports.disabled = false;
+    exports.group = 'Nokia Enhanced';
+
+    exports.process = (event) => {
+      if (!event.nokia_processed) return event;
+      
+      const deviceType = event.nokia_device_type;
+      
+      // Set severity scoring
+      const severityScores = {
+        'critical': 100,
+        'major': 90,
+        'minor': 70,
+        'warning': 60,
+        'info': 40,
+        'clear': 20,
+        'cleared': 20
+      };
+      
+      if (event.severity && severityScores[event.severity]) {
+        event.severity_score = severityScores[event.severity];
+      }
+      
+      // Set criticality
+      if (event.severity_score) {
+        if (event.severity_score >= 90) {
+          event.criticality = 'critical';
+        } else if (event.severity_score >= 70) {
+          event.criticality = 'high';
+        } else if (event.severity_score >= 50) {
+          event.criticality = 'medium';
+        } else {
+          event.criticality = 'low';
+        }
+      }
+      
+      if (deviceType === '7750_sr') {
+        // Nokia 7750 SR specific enrichment
+        
+        // Event categorization based on event name
+        if (event.event_name) {
+          const eventName = event.event_name.toLowerCase();
+          
+          if (eventName.includes('config') || eventName.includes('copy')) {
+            event.event_category = 'system';
+            event.event_type = 'configuration_change';
+            if (eventName.includes('copy')) event.config_action = 'copy';
+            else if (eventName.includes('save')) event.config_action = 'save';
+            else if (eventName.includes('load')) event.config_action = 'load';
+            else if (eventName.includes('delete')) event.config_action = 'delete';
+            
+          } else if (eventName.includes('transfer') || eventName.includes('file')) {
+            event.event_category = 'system';
+            event.event_type = 'file_transfer';
+            
+          } else if (eventName.includes('login') || eventName.includes('logout') || eventName.includes('auth')) {
+            event.event_category = 'security';
+            event.event_type = 'authentication';
+            
+          } else if (eventName.includes('interface') || eventName.includes('port')) {
+            event.event_category = 'network';
+            event.event_type = 'interface_event';
+            
+          } else if (eventName.includes('card') || eventName.includes('chassis')) {
+            event.event_category = 'hardware';
+            event.event_type = 'hardware_event';
+            
+          } else {
+            event.event_category = 'general';
+            event.event_type = 'system_event';
+          }
+        }
+        
+      } else if (deviceType === 'mag_c') {
+        // Nokia MAG-c specific enrichment
+        
+        if (event.nokia_application) {
+          const app = event.nokia_application;
+          const eventId = parseInt(event.event_id) || 0;
+          
+          switch (app) {
+            case 'MC_REDUNDANCY':
+              event.event_category = 'redundancy';
+              event.event_type = 'multi_chassis_redundancy';
+              break;
+              
+            case 'MOBILE_CUPS_BNG':
+              event.event_category = 'mobile_network';
+              event.event_type = 'cups_bng';
+              if (eventId >= 2001 && eventId <= 2012) {
+                event.event_subtype = 'session_management';
+              }
+              break;
+              
+            case 'MOBILE_GATEWAY':
+              event.event_category = 'mobile_network';
+              event.event_type = 'mobile_gateway';
+              break;
+              
+            default:
+              event.event_category = 'general';
+              event.event_type = 'application_event';
+          }
+        }
+      }
+      
+      // Common enrichment for both device types
+      
+      // Network element identification
+      if (event.host) {
+        event.network_element = event.host;
+      }
+      
+      return event;
+    };
+
+nokia_enhanced_shrink:
+  type: code
+  conf:
+    compressionLevel: basic
+    retainNokiaFields: false
+  description: "Optimize Nokia event data for storage efficiency with configurable compression"
+  disabled: false
+  lib: |
+    // Enhanced Nokia Data Optimization - Handles Both Device Types
+    exports.name = 'nokia_enhanced_shrink';
+    exports.version = '3.0.0';
+    exports.disabled = false;
+    exports.group = 'Nokia Enhanced';
+
+    exports.process = (event) => {
+      if (!event.nokia_processed) return event;
+      
+      const deviceType = event.nokia_device_type;
+      const compressionLevel = this.conf?.compressionLevel || 'basic';
+      const retainNokiaFields = this.conf?.retainNokiaFields || false;
+      
+      // Essential fields to always keep
+      const essentialFields = [
+        '_time', '_raw', 'host', 'source', 'message', 'severity', 'facility',
+        'vendor', 'product', 'device_type', 'event_category', 'event_type',
+        'event_id', 'event_name', 'criticality', 'user', 'src_ip'
+      ];
+      
+      // Device-specific essential fields
+      const deviceSpecificFields = {
+        '7750_sr': [
+          'process_name', 'process_id', 'card_slot', 'card_state',
+          'session_id', 'management_interface', 'config_action',
+          'config_source', 'config_destination', 'interface', 'interface_speed'
+        ],
+        'mag_c': [
+          'application', 'gateway_id', 'system_group', 'reference_point',
+          'apn', 'peer_ip', 'session_action', 'alert_type', 'alert_action'
+        ]
+      };
+      
+      // Add device-specific fields to essential list
+      if (deviceSpecificFields[deviceType]) {
+        essentialFields.push(...deviceSpecificFields[deviceType]);
+      }
+      
+      // Fields to remove (redundant after normalization)
+      const fieldsToRemove = [
+        'nokia_processed'
+      ];
+      
+      // Add fields to remove based on retention setting
+      if (!retainNokiaFields) {
+        fieldsToRemove.push(
+          'nokia_device_type',
+          'nokia_timestamp',
+          'nokia_hostname',
+          'nokia_structured_data'
+        );
+        
+        // Remove Nokia-specific fields that have been normalized
+        if (deviceType === '7750_sr') {
+          fieldsToRemove.push(
+            'nokia_process',
+            'nokia_pid',
+            'nokia_card1',
+            'nokia_card2',
+            'nokia_card_id',
+            'nokia_source_file',
+            'nokia_num',
+            'nokia_card_state',
+            'nokia_syslog_severity',
+            'nokia_perceived_severity',
+            'nokia_category',
+            'nokia_cause',
+            'nokia_details'
+          );
+        } else if (deviceType === 'mag_c') {
+          fieldsToRemove.push(
+            'nokia_sequence',
+            'nokia_timezone',
+            'nokia_router',
+            'nokia_application',
+            'nokia_subject_message'
+          );
+        }
+      }
+      
+      // Remove redundant fields
+      fieldsToRemove.forEach(field => {
+        delete event[field];
+      });
+      
+      // Remove NULL values and empty fields (common in Nokia logs)
+      Object.keys(event).forEach(key => {
+        if (event[key] === 'NULL' || event[key] === null ||
+            event[key] === undefined || event[key] === '') {
+          delete event[key];
+        }
+      });
+      
+      // Add processing metadata
+      event.processed_by = 'nokia_enhanced_pack';
+      event.pack_version = '3.0.0';
+      
+      return event;
+    };
