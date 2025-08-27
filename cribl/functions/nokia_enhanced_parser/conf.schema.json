@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "title": "Nokia Enhanced Parser",
+  "description": "Parse both Nokia 7750 SR and MAG-c log formats with intelligent detection",
+  "properties": {
+    "disabled": {
+      "type": "boolean",
+      "title": "Disabled",
+      "description": "Disable this function",
+      "default": false
+    },
+    "includeRawVariables": {
+      "type": "boolean",
+      "title": "Include Raw Variables",
+      "description": "Include unparsed Nokia variable names for debugging",
+      "default": false
+    },
+    "strictParsing": {
+      "type": "boolean",
+      "title": "Strict Parsing",
+      "description": "Require exact format matches (marks failed events)",
+      "default": false
+    }
+  }
+}

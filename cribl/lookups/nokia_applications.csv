@@ -1,0 +1,12 @@
+application,description,category,typical_events,device_type
+MC_REDUNDANCY,Multi-Chassis Redundancy Management,redundancy,"geo-redundancy changes, master locks, ICR alarms",mag_c
+MOBILE_CUPS_BNG,Control and User Plane Separation BNG,mobile_network,"session management, subscriber events, UPF errors",mag_c
+MOBILE_GATEWAY,Mobile Core Network Gateway Functions,mobile_network,"alarms, resource utilization, peer state changes",mag_c
+SYSTEM,System-Level Operations and Events,system,"configuration changes, system state",both
+USER,User Authentication and Management,security,"login events, configuration changes",both
+SNMP,Simple Network Management Protocol Events,network,"interface state, SNMP operations",both
+APPLICATION_ASSURANCE,Application Performance Monitoring,performance,"service assurance, QoS monitoring",mag_c
+notfmgrd,Notification Manager Daemon,system,"event notifications, alarms",7750_sr
+chassisd,Chassis Management Daemon,hardware,"card states, hardware events",7750_sr
+snmpd,SNMP Agent Daemon,network,"SNMP operations, traps",7750_sr
+cfgmgr,Configuration Manager,system,"configuration changes",7750_sr

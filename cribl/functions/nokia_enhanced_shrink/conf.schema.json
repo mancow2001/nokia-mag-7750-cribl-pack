@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "title": "Nokia Enhanced Shrink",
+  "description": "Optimize Nokia event data for storage efficiency with configurable compression",
+  "properties": {
+    "disabled": {
+      "type": "boolean",
+      "title": "Disabled",
+      "description": "Disable this function",
+      "default": false
+    },
+    "compressionLevel": {
+      "type": "string",
+      "title": "Compression Level",
+      "description": "Level of message compression to apply",
+      "enum": ["none", "basic", "aggressive"],
+      "default": "basic"
+    },
+    "retainNokiaFields": {
+      "type": "boolean",
+      "title": "Retain Nokia Fields",
+      "description": "Keep original Nokia-prefixed fields for debugging",
+      "default": false
+    }
+  }
+}

@@ -1,0 +1,9 @@
+event_id,event_name,category,severity,description,common_causes
+2406,config-file-copied,system,clear,Configuration file copied between locations,"backup operations, configuration management"
+2401,transfer-requested,system,clear,File transfer operation requested,"backup creation, file synchronization"
+1205,card-state-change,hardware,minor,Card operational state changed,"hardware insertion/removal, power events"
+3301,interface-state-change,network,warning,Interface operational state changed,"cable disconnect, protocol issues"
+2011,user-login,security,info,User authentication successful,"administrative access"
+2012,user-logout,security,info,User session terminated,"administrative session end"
+1101,chassis-alarm,hardware,major,Chassis-level hardware alarm,"power supply, temperature, fan failure"
+3401,protocol-state-change,network,warning,Routing protocol state change,"neighbor changes, network topology"

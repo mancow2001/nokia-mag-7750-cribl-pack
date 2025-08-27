@@ -1,0 +1,8 @@
+level,severity,description,score,syslog_equivalent,color_code
+1,critical,Critical system conditions requiring immediate attention,100,2,red
+2,major,Major system problems affecting operations,90,3,orange
+3,minor,Minor system issues requiring monitoring,70,4,yellow
+4,warning,Warning conditions that may affect performance,60,4,yellow
+5,info,Informational messages for operational awareness,40,6,blue
+6,clear,Previously raised alarms that have been cleared,20,6,green
+6,cleared,Previously raised alarms that have been cleared,20,6,green

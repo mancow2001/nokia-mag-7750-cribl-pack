@@ -1,0 +1,14 @@
+event_id,application,event_name,severity,description
+2001,MOBILE_CUPS_BNG,tmnxMobGwBngSessTermBySystem,WARNING,CUPS BNG session terminated by system
+2002,MOBILE_CUPS_BNG,tmnxMobGwBngSessCreateUpfNonResp,MINOR,Create Session Request to UP not acknowledged
+2003,MOBILE_CUPS_BNG,tmnxMobGwBngSubscriberCreate,WARNING,New CUPS BNG subscriber created
+2004,MOBILE_CUPS_BNG,tmnxMobGwBngSubscriberDelete,WARNING,CUPS BNG subscriber deleted
+2007,MOBILE_GATEWAY,tmnxMobGwAcrFailuresAlarmMajor,MAJOR,ACR transmission failures to CDF peer
+2010,MOBILE_GATEWAY,tmnxMobGwAcrFailuresAlarmClear,MAJOR,ACR transmission failures alarm cleared
+2038,MOBILE_GATEWAY,tmnxMobGwABSAlarm,MAJOR,Adaptive Bandwidth Shaping alarm state change
+2040,MC_REDUNDANCY,tmnxMcMobileGeoRedChgInfo,MAJOR,Mobile gateway geo-redundancy state change
+2075,MOBILE_GATEWAY,tmnxMobGwAssociationPeerState,MINOR,PFCP Association peer state change
+2096,MOBILE_GATEWAY,tmnxMobGwCamUtilAlarmMinor,MINOR,CAM utilization alarm minor threshold
+2098,MOBILE_GATEWAY,tmnxMobGwCamUtilAlarmMajor,MAJOR,CAM utilization alarm major threshold
+5001,MC_REDUNDANCY,tmnxMcMonitorMcIcrAlarm,MINOR,Monitor MC-ICR alarm occurred
+5002,MC_REDUNDANCY,tmnxMcMobileBothLockedToMaster,MINOR,Both nodes locked to Master - misconfiguration
